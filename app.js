@@ -1,4 +1,4 @@
-var msg = 'Hello World';
+var msg = 'Starting...';
 console.log(msg);
 
 fs = require('fs');
@@ -9,7 +9,7 @@ datapath = '/home/pi/sensor-data';
 filename = 'data.csv';
 HEADERLINE = 'Time Temperature Humidity Dewpoint\n';
 dataline = '';
-
+/*
 //read sensor data
 async.series([
     sht10.init,
@@ -27,6 +27,25 @@ async.series([
     if (error) {
         console.error(error);
     }
+});
+*/
+
+var SHT1x = require('pi-sht1x');
+
+async.series([
+  SHT1x.init,
+  SHT1x.reset,
+  function(callback) {
+    SHT1x.getSensorValues(function(error, values) {
+      console.log(values);
+      callback(error);
+    });
+  }
+], function(error) {
+  SHT1x.shutdown();
+  if (error) {
+    console.error(error);
+  }
 });
 
 function writesensordata(callback) {
