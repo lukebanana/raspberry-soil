@@ -3,7 +3,9 @@ import time
 import csv
 from pi_sht1x import SHT1x
 from os import system
-
+import paho.mqtt.client as mqttClient
+import paho.mqtt.publish as publish
+ 
 # Gelb = Clock
 # Blau = Data
 # Rot = Strom
@@ -11,13 +13,37 @@ from os import system
 
 DATA_PIN = 24;
 SCK_PIN = 23;
+MQTT_SERVER = "localhost"
+MQTT_PATH = "test_channel"
+
+def on_connect(client, userdata, flags, rc):
+    print("Connected with result code "+str(rc))
+
+    # Subscribing in on_connect() means that if we lose the connection and
+    # reconnect then subscriptions will be renewed.
+    client.subscribe("$SYS/#")
+
+# The callback for when a PUBLISH message is received from the server.
+def on_message(client, userdata, msg):
+    print(msg.topic+" "+str(msg.payload))
+
 
 def main():
+     client = mqttClient.Client()
+     client.on_connect = on_connect
+     client.on_message = on_message
+     client.connect(MQTT_SERVER, 1883, 60)
+     
+     # Blocking call that processes network traffic, dispatches callbacks and
+     # handles reconnecting.
+     # Other loop*() functions are available that give a threaded interface and a
+     # manual interface.
+     client.loop_forever()
+
      with SHT1x(DATA_PIN, SCK_PIN, gpio_mode=GPIO.BCM) as sensor:
           # field names  
           fields = ['Temp', 'Humidity']  
-              
-        
+     
           # name of csv file  
           filename = "measurements.csv"
               
@@ -37,13 +63,16 @@ def main():
                     sensor.calculate_dew_point(temp, humidity)
                     print(sensor)
                     #print("{\"temperature\" : %5.2f}" % temp)
-                    
+
+                    # MQTT Publsih
+                    publish.single(MQTT_PATH, "Testicle", hostname=MQTT_SERVER)
+
                     with open(filename, 'a+') as csvfile:  
                          # creating a csv writer object  
                          csvwriter = csv.writer(csvfile, delimiter=';')  
                          fields = [temp, humidity]  
                          csvwriter.writerow(fields)                           
-                    time.sleep(2)
+                    time.sleep(5)
                
           
 
