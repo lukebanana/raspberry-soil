@@ -1,7 +1,11 @@
-import RPi.GPIO as GPIO
+
 import time
 import csv
 import json
+import random
+import sys
+import RPi.GPIO as GPIO
+from termcolor import colored
 from pi_sht1x import SHT1x
 from configparser import ConfigParser
 from os import system
@@ -15,48 +19,35 @@ import paho.mqtt.publish as publish
 # Green = Ground
 
 debug = False
-
-def on_connect(client, userdata, flags, rc):
-    print("Connected with result code "+str(rc))
-
-    # Subscribing in on_connect() means that if we lose the connection and
-    # reconnect then subscriptions will be renewed.
-    #client.subscribe("$SYS/#")
-
-# The callback for when a PUBLISH message is received from the server.
-def on_message(client, userdata, msg):
-    print(msg.topic+" "+str(msg.payload))
-
+configFileName = "config.ini"
 
 def main():
      config_object = ConfigParser()
-     config_object.read("config.ini")
+     config_object.read(configFileName)
 
-     #Get the password
      serverConf = config_object["SERVER_CONFIG"]
      mqttServer = serverConf["MQTT_SERVER"]
-     mqttPort = serverConf["MQTT_PORT"]     
-     client_keepalive = serverConf["CLIENT_KEEPALIVE"]
+     mqttPort = int(serverConf["MQTT_PORT"])    
+     client_keepalive = int(serverConf["CLIENT_KEEPALIVE"])
      mqttTopic = serverConf["MQTT_TOPIC"]
      mqttUsername = serverConf["MQTT_USERNAME"]
      mqttPW = serverConf["MQTT_PASSWORD"]
 
      gpioConfig = config_object["GPIO_CONFIG"]
-     data_pin = gpioConfig["DATA_PIN"]
-     sck_pin = gpioConfig["SCK_PIN"]
+     data_pin = int(gpioConfig["DATA_PIN"])
+     sck_pin = int(gpioConfig["SCK_PIN"])
 
      if mqttServer:
-          print("-------------------------------------------------")
-          print("Starting Rasperry Soil Sensor Data Publisher")
-          print("-------------------------------------------------")
-          print("[i] Using MQTT server {} on port {}".format(mqttServer, mqttPort))
-          print("[i] Channel: {}".format(mqttTopic))
-          print("[i] Using user: {}".format(mqttUsername))
-
+          print(colored("-------------------------------------------------", 'cyan'))
+          print(colored("Rasperry Soil Sensor Data Publisher", 'magenta'))
+          print(colored("-------------------------------------------------", 'cyan'))
+          print(("[i] Using MQTT server " + colored("{}", 'yellow') + " on port " + colored("{}", 'yellow')).format(mqttServer, mqttPort))
+          print("[i] Channel: " + colored("{}", 'yellow').format(mqttTopic))
+          print("[i] Using user: " + colored("{}", 'yellow').format(mqttUsername))
+          print()
+          
           client = mqttClient.Client()
-          client.on_connect = on_connect
-          client.on_message = on_message
-          client.connect(mqttServer, int(mqttPort),  int(client_keepalive))
+          client.connect(mqttServer, mqttPort, client_keepalive)
           client.username_pw_set(mqttUsername, password=mqttPW)
    
           with SHT1x(data_pin, sck_pin, gpio_mode=GPIO.BCM) as sensor:
@@ -73,16 +64,16 @@ def main():
                     csvwriter.writerow(fields)  
                     
                     try:
-                         print("Running...")
+                         print(colored("Sensor is collecting and sending data...", 'green'))
                          while 1:
                               if debug:
-                                   temp = 25.65
-                                   humidity = 35.102
+                                   temp = 12.65 + random.randint(1,18)
+                                   humidity = 35.102 + random.randint(1, 10)
                               else:
-                                   system("clear")
                                    temp = sensor.read_temperature()
                                    humidity = sensor.read_humidity(temp)
                                    sensor.calculate_dew_point(temp, humidity)
+                                   #system("clear")
                                    #print(sensor)
                                    #print("{\"temperature\" : %5.2f}" % temp)
                               
@@ -99,11 +90,6 @@ def main():
                     except (KeyboardInterrupt, SystemExit):
                          print("Received keyboard interrupt, quitting ...")
 
-               # Blocking call that processes network traffic, dispatches callbacks and
-               # handles reconnecting.
-               # Other loop*() functions are available that give a threaded interface and a
-               # manual interface.
-               #client.loop_forever()
 
                print("Closing connection..")
 
