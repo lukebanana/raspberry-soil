@@ -64,3 +64,9 @@ typings/
 # next.js build output
 .next
 build/*.gypi
+
+# VSCode
+.vscode/
+
+#PIP
+Pipfile.lock
