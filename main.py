@@ -11,7 +11,6 @@ from configparser import ConfigParser
 from os import system
 
 import paho.mqtt.client as mqttClient
-import paho.mqtt.publish as publish
 
 # Gelb = Clock
 # Blau = Data
@@ -19,7 +18,15 @@ import paho.mqtt.publish as publish
 # Green = Ground
 
 debug = False
+verbose_output = False
+writeToCSV = False
 configFileName = "config.ini"
+
+def on_connect(client, userdata, flags, rc):
+    print("Connected flags ",str(flags),"result code ",str(rc))
+
+def on_message(client, userdata, msg):
+    print(msg.topic+" "+str(msg.payload))
 
 def main():
      config_object = ConfigParser()
@@ -29,6 +36,7 @@ def main():
      mqttServer = serverConf["MQTT_SERVER"]
      mqttPort = int(serverConf["MQTT_PORT"])    
      client_keepalive = int(serverConf["CLIENT_KEEPALIVE"])
+     dataGatheringInterval = int(serverConf["DATA_GATHERING_INTERVAL"])
      mqttTopic = serverConf["MQTT_TOPIC"]
      mqttUsername = serverConf["MQTT_USERNAME"]
      mqttPW = serverConf["MQTT_PASSWORD"]
@@ -47,48 +55,55 @@ def main():
           print()
           
           client = mqttClient.Client()
-          client.connect(mqttServer, mqttPort, client_keepalive)
-          client.username_pw_set(mqttUsername, password=mqttPW)
-   
-          with SHT1x(data_pin, sck_pin, gpio_mode=GPIO.BCM) as sensor:
-          
-               fields = ['Temp', 'Humidity']
-               filename = "measurements.csv"
-               
-               # writing to csv file  
-               with open(filename, 'w') as csvfile:  
-                    # creating a csv writer object  
-                    csvwriter = csv.writer(csvfile, delimiter=';')  
-                    
-                    # writing the fields  
-                    csvwriter.writerow(fields)  
-                    
-                    try:
-                         print(colored("Sensor is collecting and sending data...", 'green'))
-                         while 1:
-                              if debug:
-                                   temp = 12.65 + random.randint(1,18)
-                                   humidity = 35.102 + random.randint(1, 10)
-                              else:
-                                   temp = sensor.read_temperature()
-                                   humidity = sensor.read_humidity(temp)
-                                   sensor.calculate_dew_point(temp, humidity)
-                                   #system("clear")
-                                   #print(sensor)
-                                   #print("{\"temperature\" : %5.2f}" % temp)
-                              
-                              jsonData = json.dumps({"temperature": temp, "humidity": humidity })
-                              # MQTT publish
-                              publish.single(mqttTopic, jsonData, hostname=mqttServer)
+          client.username_pw_set(mqttUsername, mqttPW)
+          client.on_connect = on_connect
+          client.on_message = on_message
 
+          client.connect(mqttServer, mqttPort, client_keepalive)
+
+          with SHT1x(data_pin, sck_pin, gpio_mode=GPIO.BCM) as sensor:
+               if(writeToCSV):
+                    fields = ['Temp', 'Humidity']
+                    filename = "measurements.csv"
+                    csvfile = open(filename, 'w')
+                    try:
+                         # Further file processing goes here
+                         # creating a csv writer object  
+                         csvwriter = csv.writer(csvfile, delimiter=';')  
+                         
+                         # writing the fields  
+                         csvwriter.writerow(fields)  
+                    finally:
+                         csvfile.close()
+                    
+               try:
+                    print(colored("Sensor is collecting and sending data...", 'green'))
+                    while 1:
+                         if debug:
+                              temp = 12.65 + random.randint(1,18)
+                              humidity = 35.102 + random.randint(1, 10)
+                         else:
+                              temp = sensor.read_temperature()
+                              humidity = sensor.read_humidity(temp)
+                              sensor.calculate_dew_point(temp, humidity)
+                         
+                         jsonData = json.dumps({"temperature": temp, "humidity": humidity })
+                         if(verbose_output):
+                              print(jsonData)
+
+                         # MQTT publish
+                         client.publish(mqttTopic, jsonData)
+
+                         if(writeToCSV):
                               with open(filename, 'a+') as csvfile: 
                                    csvwriter = csv.writer(csvfile, delimiter=';')  
                                    fields = [temp, humidity]  
                                    csvwriter.writerow(fields)                           
-                                   time.sleep(5)
+                                  
 
-                    except (KeyboardInterrupt, SystemExit):
-                         print("Received keyboard interrupt, quitting ...")
+                         time.sleep(dataGatheringInterval)
+               except (KeyboardInterrupt, SystemExit):
+                    print("Received keyboard interrupt, quitting ...")
 
 
                print("Closing connection..")
