@@ -18,7 +18,6 @@ import paho.mqtt.client as mqttClient
 # Green = Ground
 
 debug = False
-verbose_output = False
 configFileName = "config.ini"
 
 def on_connect(client, userdata, flags, rc):
@@ -42,8 +41,8 @@ def main():
 
           generalConfig = config_object["GENERAL_CONFIG"]
           dataGatheringInterval = int(generalConfig["DATA_GATHERING_INTERVAL"])
-          writeToCSV = bool(generalConfig["WRITE_TO_CSV_FILE"])
-          verbose_output = bool(generalConfig["VERBOSE_OUTPUT"])
+          writeToCSV = generalConfig["WRITE_TO_CSV_FILE"]
+          verboseOutput = generalConfig["VERBOSE_OUTPUT"]
 
           gpioConfig = config_object["GPIO_CONFIG"]
           data_pin = int(gpioConfig["DATA_PIN"])
@@ -68,7 +67,7 @@ def main():
           client.connect(mqttServer, mqttPort, client_keepalive)
 
           with SHT1x(data_pin, sck_pin, gpio_mode=GPIO.BCM) as sensor:
-               if(writeToCSV):
+               if(writeToCSV == 'True'):
                     fields = ['Temp', 'Humidity']
                     filename = "measurements.csv"
                     csvfile = open(filename, 'w')
@@ -91,16 +90,16 @@ def main():
                          else:
                               temp = sensor.read_temperature()
                               humidity = sensor.read_humidity(temp)
-                              sensor.calculate_dew_point(temp, humidity)
+                              #sensor.calculate_dew_point(temp, humidity)
                          
                          jsonData = json.dumps({"temperature": temp, "humidity": humidity })
-                         if(verbose_output):
+                         if(verboseOutput == 'True'):
                               print(jsonData)
 
                          # MQTT publish
                          client.publish(mqttTopic, jsonData)
 
-                         if(writeToCSV):
+                         if(writeToCSV == 'True'):
                               with open(filename, 'a+') as csvfile: 
                                    csvwriter = csv.writer(csvfile, delimiter=';')  
                                    fields = [temp, humidity]  
