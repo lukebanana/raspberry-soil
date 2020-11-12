@@ -19,7 +19,6 @@ import paho.mqtt.client as mqttClient
 
 debug = False
 verbose_output = False
-writeToCSV = False
 configFileName = "config.ini"
 
 def on_connect(client, userdata, flags, rc):
@@ -32,20 +31,27 @@ def main():
      config_object = ConfigParser()
      config_object.read(configFileName)
 
-     serverConf = config_object["SERVER_CONFIG"]
-     mqttServer = serverConf["MQTT_SERVER"]
-     mqttPort = int(serverConf["MQTT_PORT"])    
-     client_keepalive = int(serverConf["CLIENT_KEEPALIVE"])
-     dataGatheringInterval = int(serverConf["DATA_GATHERING_INTERVAL"])
-     mqttTopic = serverConf["MQTT_TOPIC"]
-     mqttUsername = serverConf["MQTT_USERNAME"]
-     mqttPW = serverConf["MQTT_PASSWORD"]
+     try:
+          serverConf = config_object["SERVER_CONFIG"]
+          mqttServer = serverConf["MQTT_SERVER"]
+          mqttPort = int(serverConf["MQTT_PORT"])    
+          mqttTopic = serverConf["MQTT_TOPIC"]
+          mqttUsername = serverConf["MQTT_USERNAME"]
+          mqttPW = serverConf["MQTT_PASSWORD"]
+          client_keepalive = int(serverConf["CLIENT_KEEPALIVE"])
 
-     gpioConfig = config_object["GPIO_CONFIG"]
-     data_pin = int(gpioConfig["DATA_PIN"])
-     sck_pin = int(gpioConfig["SCK_PIN"])
+          generalConfig = config_object["GENERAL_CONFIG"]
+          dataGatheringInterval = int(generalConfig["DATA_GATHERING_INTERVAL"])
+          writeToCSV = bool(generalConfig["WRITE_TO_CSV_FILE"])
+          verbose_output = bool(generalConfig["VERBOSE_OUTPUT"])
 
-     if mqttServer:
+          gpioConfig = config_object["GPIO_CONFIG"]
+          data_pin = int(gpioConfig["DATA_PIN"])
+          sck_pin = int(gpioConfig["SCK_PIN"])
+     except KeyError as kError:
+          raise Exception(colored("Configuration Error: Key {0} not found in config file.".format(kError), 'red'))
+
+     if serverConf:
           print(colored("-------------------------------------------------", 'cyan'))
           print(colored("Rasperry Soil Sensor Data Publisher", 'magenta'))
           print(colored("-------------------------------------------------", 'cyan'))
