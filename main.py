@@ -33,16 +33,17 @@ def main():
      try:
           serverConf = config_object["SERVER_CONFIG"]
           mqttServer = serverConf["MQTT_SERVER"]
-          mqttPort = int(serverConf["MQTT_PORT"])    
+          mqttPort = serverConf.getint("MQTT_PORT")    
           mqttTopic = serverConf["MQTT_TOPIC"]
           mqttUsername = serverConf["MQTT_USERNAME"]
           mqttPW = serverConf["MQTT_PASSWORD"]
-          client_keepalive = int(serverConf["CLIENT_KEEPALIVE"])
+          client_keepalive = serverConf.getint("CLIENT_KEEPALIVE")
 
-          generalConfig = config_object["GENERAL_CONFIG"]
-          dataGatheringInterval = int(generalConfig["DATA_GATHERING_INTERVAL"])
-          writeToCSV = generalConfig["WRITE_TO_CSV_FILE"]
-          verboseOutput = generalConfig["VERBOSE_OUTPUT"]
+          generalConfig = config_object["GENERAL_CONFIG"]         
+          dataGatheringInterval = generalConfig.getint("DATA_GATHERING_INTERVAL")
+          writeToCSV = generalConfig.getboolean("WRITE_TO_CSV_FILE")
+          useWaterPump = generalConfig.getboolean("USE_WATER_PUMP")
+          verboseOutput = generalConfig.getboolean("VERBOSE_OUTPUT")
 
           gpioConfig = config_object["GPIO_CONFIG"]
           data_pin = int(gpioConfig["DATA_PIN"])
@@ -67,7 +68,7 @@ def main():
           client.connect(mqttServer, mqttPort, client_keepalive)
 
           with SHT1x(data_pin, sck_pin, gpio_mode=GPIO.BCM) as sensor:
-               if(writeToCSV == 'True'):
+               if(writeToCSV):
                     fields = ['Temp', 'Humidity']
                     filename = "measurements.csv"
                     csvfile = open(filename, 'w')
@@ -93,13 +94,29 @@ def main():
                               #sensor.calculate_dew_point(temp, humidity)
                          
                          jsonData = json.dumps({"temperature": temp, "humidity": humidity })
-                         if(verboseOutput == 'True'):
+                         if(verboseOutput):
                               print(jsonData)
 
                          # MQTT publish
                          client.publish(mqttTopic, jsonData)
 
-                         if(writeToCSV == 'True'):
+                         if(useWaterPump):
+                              humidityMinThreshold = 30     
+                              humidityMaxThreshold = 50
+                              pumpIsActive = False
+
+                              if(humidity >= humidityMinThreshold and humidity <= humidityMaxThreshold):                    
+                                   if(pumpIsActive == 'False'):
+                                        # activate pump
+                                        print("Pump set active...")
+                                        pumpIsActive = True;                                
+                              else:       
+                                   # stop pump
+                                   pumpIsActive = False;   
+                                   print("Pump stopped.")
+                         
+
+                         if(writeToCSV):
                               with open(filename, 'a+') as csvfile: 
                                    csvwriter = csv.writer(csvfile, delimiter=';')  
                                    fields = [temp, humidity]  
