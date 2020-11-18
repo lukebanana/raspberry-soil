@@ -1,4 +1,3 @@
-
 import time
 import csv
 import json
@@ -19,6 +18,7 @@ import paho.mqtt.client as mqttClient
 
 debug = False
 configFileName = "config.ini"
+pumpIsActive = False
 
 def on_connect(client, userdata, flags, rc):
     print("Connected flags ",str(flags),"result code ",str(rc))
@@ -31,27 +31,29 @@ def main():
      config_object.read(configFileName)
 
      try:
-          serverConf = config_object["SERVER_CONFIG"]
-          mqttServer = serverConf["MQTT_SERVER"]
-          mqttPort = serverConf.getint("MQTT_PORT")    
-          mqttTopic = serverConf["MQTT_TOPIC"]
-          mqttUsername = serverConf["MQTT_USERNAME"]
-          mqttPW = serverConf["MQTT_PASSWORD"]
-          client_keepalive = serverConf.getint("CLIENT_KEEPALIVE")
+          mqttServer = config_object.get("SERVER_CONFIG", "MQTT_SERVER", fallback="127.0.0.1")
+          mqttPort = config_object.getint("SERVER_CONFIG", "MQTT_PORT", fallback=1883)    
+          mqttTopic = config_object.get("SERVER_CONFIG", "MQTT_TOPIC", fallback="home/plant")     
+          client_keepalive = config_object.getint("SERVER_CONFIG", "CLIENT_KEEPALIVE", fallback=60)
+          mqttUseUsernamePWAuth = config_object.getboolean("SERVER_CONFIG", "MQTT_USE_USERNAME_PW_AUTH", fallback=False)
 
-          generalConfig = config_object["GENERAL_CONFIG"]         
-          dataGatheringInterval = generalConfig.getint("DATA_GATHERING_INTERVAL")
-          writeToCSV = generalConfig.getboolean("WRITE_TO_CSV_FILE")
-          useWaterPump = generalConfig.getboolean("USE_WATER_PUMP")
-          verboseOutput = generalConfig.getboolean("VERBOSE_OUTPUT")
-
-          gpioConfig = config_object["GPIO_CONFIG"]
-          data_pin = int(gpioConfig["DATA_PIN"])
-          sck_pin = int(gpioConfig["SCK_PIN"])
+          if(mqttUseUsernamePWAuth):
+               mqttUsername = config_object.get("SERVER_CONFIG", "MQTT_USERNAME")
+               mqttPW = config_object.get("SERVER_CONFIG", "MQTT_PASSWORD")
+      
+          dataGatheringInterval = config_object.getint("GENERAL_CONFIG", "DATA_GATHERING_INTERVAL", fallback=5)
+          writeToCSV = config_object.getboolean("GENERAL_CONFIG", "WRITE_TO_CSV_FILE", fallback=False)
+          verboseOutput = config_object.getboolean("GENERAL_CONFIG", "VERBOSE_OUTPUT", fallback=False)
+          useWaterPump = config_object.getboolean("GENERAL_CONFIG", "USE_WATER_PUMP", fallback=False)
+          humidityMinThreshold = config_object.getint("GENERAL_CONFIG", "PUMP_HUMIDITY_MIN_THRESHOLD", fallback=25)     
+          humidityMaxThreshold = config_object.getint("GENERAL_CONFIG", "PUMP_HUMIDITY_MAX_THRESHOLD", fallback=50)
+     
+          data_pin = config_object.getint("GPIO_CONFIG", "DATA_PIN", fallback=24)
+          sck_pin = config_object.getint("GPIO_CONFIG", "SCK_PIN", fallback=23)
      except KeyError as kError:
           raise Exception(colored("Configuration Error: Key {0} not found in config file.".format(kError), 'red'))
 
-     if serverConf:
+     if mqttServer and mqttTopic:
           print(colored("-------------------------------------------------", 'cyan'))
           print(colored("Rasperry Soil Sensor Data Publisher", 'magenta'))
           print(colored("-------------------------------------------------", 'cyan'))
@@ -61,7 +63,8 @@ def main():
           print()
           
           client = mqttClient.Client()
-          client.username_pw_set(mqttUsername, mqttPW)
+          if(mqttUseUsernamePWAuth):
+               client.username_pw_set(mqttUsername, mqttPW)
           client.on_connect = on_connect
           client.on_message = on_message
 
@@ -101,19 +104,17 @@ def main():
                          client.publish(mqttTopic, jsonData)
 
                          if(useWaterPump):
-                              humidityMinThreshold = 30     
-                              humidityMaxThreshold = 50
-                              pumpIsActive = False
+                            
 
                               if(humidity >= humidityMinThreshold and humidity <= humidityMaxThreshold):                    
-                                   if(pumpIsActive == 'False'):
+                                   if(not pumpIsActive):
                                         # activate pump
-                                        print("Pump set active...")
-                                        pumpIsActive = True;                                
+                                        print(colored("Pump set active...", 'green'))
+                                        pumpIsActive = True                              
                               else:       
                                    # stop pump
-                                   pumpIsActive = False;   
-                                   print("Pump stopped.")
+                                   pumpIsActive = False  
+                                   print(colored("Pump stopped.", 'green'))
                          
 
                          if(writeToCSV):
