@@ -19,23 +19,23 @@ import paho.mqtt.client as mqttClient
 
 class RaspberrySoil:
      debug = False
-     pump_is_active = False
+     relay_is_active = False
      config_file_name = "config.ini"
      config_object = ConfigParser()
-     pumpStartTime = datetime.now()
-     pumpCurrentTime = pumpStartTime
+     relayStartTime = datetime.now()
+     relayCurrentTime = relayStartTime
      relay_pin = 0
 
      def get_formatted_current_datetime_string(self):
           return "[" + datetime.now().strftime("%d.%m.%Y %H:%M:%S") + "]"
 
-     def get_pump_duration_delta(self):
-          return self.pumpCurrentTime - self.pumpStartTime
+     def get_relay_duration_delta(self):
+          return self.relayCurrentTime - self.relayStartTime
 
-     def print_pump_duration_delta(self):
-          deltaHours, deltaRemainder = divmod(self.get_pump_duration_delta().total_seconds(), 3600)
+     def print_relay_duration_delta(self):
+          deltaHours, deltaRemainder = divmod(self.get_relay_duration_delta().total_seconds(), 3600)
           deltaMinutes, deltaSeconds = divmod(deltaRemainder, 60)                
-          print(self.get_formatted_current_datetime_string() + " Pumping duration: " + colored("{:-.0f}hrs {:-.0f}mins {:-.0f}s", 'yellow').format(deltaHours, deltaMinutes, deltaSeconds))  
+          print(self.get_formatted_current_datetime_string() + " Relay was active for " + colored("{:-.0f}hrs {:-.0f}mins {:-.0f}s", 'yellow').format(deltaHours, deltaMinutes, deltaSeconds))  
 
      def _on_connect(self, client, userdata, flags, rc):
           print("Connected flags ",str(flags),"result code ",str(rc))
@@ -46,13 +46,13 @@ class RaspberrySoil:
      def _setup_config(self):
           self.config_object.read(self.config_file_name)
 
-     def _stop_pump(self, log):
+     def _stop_relay(self, log):
           GPIO.output(self.relay_pin, GPIO.LOW)  # stop relay
-          self.pump_is_active = False  
-          self.pumpCurrentTime = datetime.now()
+          self.relay_is_active = False  
+          self.relayCurrentTime = datetime.now()
           if(log):
-               print(self.get_formatted_current_datetime_string() + " " + colored("Pump stopped.", 'green'))            
-          self.print_pump_duration_delta()      
+               print(self.get_formatted_current_datetime_string() + " " + colored("Relay inactive.", 'green'))            
+          self.print_relay_duration_delta()      
 
      def __init__(self):
           self._setup_config()
@@ -71,9 +71,9 @@ class RaspberrySoil:
                dataGatheringInterval = self.config_object.getint("GENERAL_CONFIG", "DATA_GATHERING_INTERVAL", fallback=5)
                writeToCSV = self.config_object.getboolean("GENERAL_CONFIG", "WRITE_TO_CSV_FILE", fallback=False)
                verboseOutput = self.config_object.getboolean("GENERAL_CONFIG", "VERBOSE_OUTPUT", fallback=False)
-               useWaterPump = self.config_object.getboolean("GENERAL_CONFIG", "USE_WATER_PUMP", fallback=False)
-               humidityMinThreshold = self.config_object.getfloat("GENERAL_CONFIG", "PUMP_HUMIDITY_MIN_THRESHOLD", fallback=0.0)     
-               humidityMaxThreshold = self.config_object.getfloat("GENERAL_CONFIG", "PUMP_HUMIDITY_MAX_THRESHOLD", fallback=50.0)
+               useRelay = self.config_object.getboolean("GENERAL_CONFIG", "USE_RELAY", fallback=False)
+               humidityMinThreshold = self.config_object.getfloat("GENERAL_CONFIG", "RELAY_HUMIDITY_MIN_THRESHOLD", fallback=0.0)     
+               humidityMaxThreshold = self.config_object.getfloat("GENERAL_CONFIG", "RELAY_HUMIDITY_MAX_THRESHOLD", fallback=50.0)
           
                data_pin = self.config_object.getint("GPIO_CONFIG", "DATA_PIN", fallback=24)
                sck_pin = self.config_object.getint("GPIO_CONFIG", "SCK_PIN", fallback=23)
@@ -124,21 +124,21 @@ class RaspberrySoil:
                                    humidity = sensor.read_humidity(temp)
                                    #sensor.calculate_dew_point(temp, humidity)
                               
-                              jsonData = json.dumps({"temperature": temp, "humidity": humidity })
+                              jsonData = json.dumps({"temperature": temp, "humidity": humidity, "relay_is_active" : self.relay_is_active })
                               if(verboseOutput):
                                    print(self.get_formatted_current_datetime_string() + " " + jsonData)
 
-                              if(useWaterPump):         
+                              if(useRelay):         
                                    if(humidity >= humidityMinThreshold and humidity <= humidityMaxThreshold):                    
-                                        if(not self.pump_is_active):                              
+                                        if(not self.relay_is_active):                              
                                              GPIO.output(self.relay_pin, GPIO.HIGH)  # activate relay                         
-                                             self.pump_is_active = True                                            
-                                             self.pumpStartTime = datetime.now()
-                                             self.pumpCurrentTime = self.pumpStartTime
-                                             print(self.get_formatted_current_datetime_string() + " " + colored("Pump set active...", 'green'))
+                                             self.relay_is_active = True                                            
+                                             self.relayStartTime = datetime.now()
+                                             self.relayCurrentTime = self.relayStartTime
+                                             print(self.get_formatted_current_datetime_string() + " " + colored("Relay set active...", 'green'))
                                    else:                                   
-                                        if(self.pump_is_active):
-                                           self._stop_pump(log=True)                              
+                                        if(self.relay_is_active):
+                                           self._stop_relay(log=True)                              
                                  
                               client.publish(mqttTopic, jsonData)  # MQTT publish
                          
@@ -153,8 +153,8 @@ class RaspberrySoil:
                          print()
                          print(colored("Received keyboard interrupt, quitting ...", 'red'))
 
-                    if(useWaterPump and self.pump_is_active):
-                         self._stop_pump(log=True)     
+                    if(useRelay and self.relay_is_active):
+                         self._stop_relay(log=True)     
 
                     print("Closing connection..")
 
