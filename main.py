@@ -1,5 +1,5 @@
 from time import sleep
-from datetime import datetime
+from datetime import datetime, timedelta
 import csv
 import json
 import random
@@ -19,8 +19,14 @@ import paho.mqtt.client as mqttClient
 
 class RaspberrySoil:
      debug = False
+     pump_is_active = False
      config_file_name = "config.ini"
      config_object = ConfigParser()
+     pumpStartTime = datetime.now()
+     pumpCurrentTime = pumpStartTime
+
+     def get_pump_duration_delta(self):
+          return self.pumpCurrentTime - self.pumpStartTime
 
      def _on_connect(self, client, userdata, flags, rc):
           print("Connected flags ",str(flags),"result code ",str(rc))
@@ -28,6 +34,7 @@ class RaspberrySoil:
      def _on_message(self, client, userdata, msg):
           print(msg.topic+" "+str(msg.payload))
 
+   
      def _setup_config(self):
           self.config_object.read(self.config_file_name)
 
@@ -42,7 +49,7 @@ class RaspberrySoil:
                mqttUseUsernamePWAuth = self.config_object.getboolean("SERVER_CONFIG", "MQTT_USE_USERNAME_PW_AUTH", fallback=False)
 
                if(mqttUseUsernamePWAuth):
-                    mqttUsername = self.config_object.get("SERVER_CONFIG", "MQTT_USERNAME")
+                    mqttUsername = self.config_object.get("SERVER_CONFIG", "MQTT_USERNAME", fallback="raspberrySoil")
                     mqttPW = self.config_object.get("SERVER_CONFIG", "MQTT_PASSWORD")
           
                dataGatheringInterval = self.config_object.getint("GENERAL_CONFIG", "DATA_GATHERING_INTERVAL", fallback=5)
@@ -70,9 +77,9 @@ class RaspberrySoil:
                client = mqttClient.Client()
                if(mqttUseUsernamePWAuth):
                     client.username_pw_set(mqttUsername, mqttPW)
+
                client.on_connect = self._on_connect
                client.on_message = self._on_message
-
                client.connect(mqttServer, mqttPort, client_keepalive)
 
                GPIO.setmode(GPIO.BCM)
@@ -84,20 +91,19 @@ class RaspberrySoil:
                          filename = "measurements.csv"
                          csvfile = open(filename, 'w')
                          try:
-                              # Further file processing goes here
-                              # creating a csv writer object  
-                              csvwriter = csv.writer(csvfile, delimiter=';')  
-                              
-                              # writing the fields  
+                              csvwriter = csv.writer(csvfile, delimiter=';')
                               csvwriter.writerow(fields)  
                          finally:
                               csvfile.close()
                          
                     try:
                          print(colored("Sensor is collecting and sending data...", 'green'))
-                         pumpIsActive = False
+                         pumpStartTime = datetime.now()
+                         pumpEndTime = datetime.now()
+
                          while 1:
-                              todayStr = "[" +  datetime.now().strftime("%d.%m.%Y %H:%M:%S") + "]"
+                              currentTime = datetime.now()
+                              todayStr = "[" + currentTime.strftime("%d.%m.%Y %H:%M:%S") + "]"
                               if self.debug:
                                    temp = 12.65 + random.randint(1,18)
                                    humidity = 35.102 + random.randint(1, 10)
@@ -110,21 +116,26 @@ class RaspberrySoil:
                               if(verboseOutput):
                                    print(todayStr + " " + jsonData)
 
-                              if(useWaterPump):                        
-                                   
+                              if(useWaterPump):         
                                    if(humidity >= humidityMinThreshold and humidity <= humidityMaxThreshold):                    
-                                        if(not pumpIsActive):                              
+                                        if(not self.pump_is_active):                              
                                              GPIO.output(relay_pin, GPIO.HIGH)  # activate relay                         
-                                             pumpIsActive = True                                            
+                                             self.pump_is_active = True                                            
+                                             self.pumpStartTime = datetime.now()
+                                             self.pumpCurrentTime = pumpStartTime
                                              print(todayStr + " " + colored("Pump set active...", 'green'))
                                    else:                                   
-                                        if(pumpIsActive):
+                                        if(self.pump_is_active):
                                              GPIO.output(relay_pin, GPIO.LOW)  # stop relay
-                                             pumpIsActive = False  
-                                             print(todayStr + " " + colored("Pump stopped.", 'green'))                    
-
-                              # MQTT publish
-                              client.publish(mqttTopic, jsonData)
+                                             self.pump_is_active = False  
+                                             self.pumpCurrentTime = datetime.now()
+                                             print(todayStr + " " + colored("Pump stopped.", 'green'))            
+                                             deltaHours, deltaRemainder = divmod(self.get_pump_duration_delta().total_seconds(), 3600)
+                                             deltaMinutes, deltaSeconds = divmod(deltaRemainder, 60)                
+                                             print(todayStr + " " + colored("Pumping duration: {:-2.0f}hrs {:-2.0f}mins {:-2.0f}s", 'green').format(deltaHours, deltaMinutes, deltaSeconds))    
+                                   
+                                 
+                              client.publish(mqttTopic, jsonData)  # MQTT publish
                          
                               if(writeToCSV):
                                    with open(filename, 'a+') as csvfile: 
@@ -137,12 +148,11 @@ class RaspberrySoil:
                          print()
                          print(colored("Received keyboard interrupt, quitting ...", 'red'))
 
-
                     print("Closing connection..")
                     if(useWaterPump):
                          GPIO.output(relay_pin, GPIO.LOW)  # stop relay
-                         pumpIsActive = False  
+                         self.pump_is_active = False  
 
 
 if __name__ == '__main__':
-     soil = RaspberrySoil()
+     raspberrySoil = RaspberrySoil()
